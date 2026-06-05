@@ -1010,7 +1010,10 @@ async function initSttSettings() {
       modelSelect.style.display = ''; modelInput.style.display = 'none';
     } else {
       modelSelect.style.display = 'none'; modelInput.style.display = '';
-      if (isGroq() && !modelInput.value) modelInput.value = 'whisper-large-v3-turbo';
+      var provText = provSel.options[provSel.selectedIndex] ? provSel.options[provSel.selectedIndex].textContent : '';
+      if ((isGroq() || provText.toLowerCase().includes('groq')) && !modelInput.value) {
+        modelInput.value = 'whisper-large-v3-turbo';
+      }
     }
   }
 
@@ -1020,19 +1023,6 @@ async function initSttSettings() {
     if (card) card.style.opacity = off ? '0.45' : '';
     if (sttConfigWrap) sttConfigWrap.style.pointerEvents = off ? 'none' : '';
   }
-
-  // Add API endpoints that support STT (OpenAI-compatible)
-  try {
-    var epRes = await fetch('/api/model-endpoints', { credentials: 'same-origin' });
-    var endpoints = await epRes.json();
-    endpoints.forEach(function(ep) {
-      if (!ep.is_enabled) return;
-      var opt = document.createElement('option');
-      opt.value = 'endpoint:' + ep.id;
-      opt.textContent = ep.name + ' (API)';
-      provSel.appendChild(opt);
-    });
-  } catch (e) { console.warn('Failed to load endpoints for STT', e); }
 
   // Load saved settings
   try {

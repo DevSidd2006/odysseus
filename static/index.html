@@ -1119,6 +1119,12 @@
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                 <line x1="12" y1="19" x2="12" y2="22"/>
               </svg>
+              <div class="stt-waveform" aria-hidden="true">
+                <span class="stt-wave-bar"></span>
+                <span class="stt-wave-bar"></span>
+                <span class="stt-wave-bar"></span>
+                <span class="stt-wave-bar"></span>
+              </div>
             </button>
           </div>
           <!-- Agent / Chat mode toggle -->
@@ -1524,16 +1530,16 @@
                 <label class="settings-label">Provider</label>
                 <select id="set-sttProviderSelect" class="settings-select">
                   <option value="disabled">Disabled</option>
-                  <option value="browser">Browser (Web Speech API — Chrome/Edge)</option>
-                  <option value="groq">Groq Cloud (whisper-large-v3-turbo, free tier)</option>
-                  <option value="local">Local (faster-whisper, runs on CPU/GPU)</option>
+                  <option value="browser">Browser Native</option>
+                  <option value="groq">Groq Cloud</option>
+                  <option value="local">Local Whisper</option>
                 </select>
               </div>
               <!-- Groq API key — shown only for groq -->
               <div id="set-sttGroqKeyRow" style="display:flex;align-items:center;gap:0.75rem;display:none;">
                 <label class="settings-label">Groq API Key</label>
                 <input id="set-sttGroqApiKey" type="password" class="settings-select" placeholder="gsk_…" style="flex:1;" autocomplete="off">
-                <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="font-size:11px;opacity:0.6;white-space:nowrap;">Get free key ↗</a>
+                <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="font-size:11px;opacity:0.6;white-space:nowrap;color:var(--fg);text-decoration:underline;">Get free key ↗</a>
               </div>
               <!-- Model -->
               <div id="set-sttModelRow" style="display:flex;align-items:center;gap:0.75rem;">

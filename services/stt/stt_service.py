@@ -207,8 +207,11 @@ class STTService:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        # If base_url belongs to Groq, default to their recommended Whisper model instead of whisper-1
+        default_model = "whisper-large-v3-turbo" if "groq.com" in base_url else "whisper-1"
+
         files = {"file": ("audio.webm", io.BytesIO(audio_bytes), "audio/webm")}
-        data: dict = {"model": model or "whisper-1"}
+        data: dict = {"model": model.strip() if (model and model.strip()) else default_model}
         if language:
             data["language"] = language
 
