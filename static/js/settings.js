@@ -969,31 +969,48 @@ async function initTtsSettings() {
 
 /* ── Speech to Text ── */
 async function initSttSettings() {
-  var provSel = el('set-sttProviderSelect');
-  var modelSelect = el('set-sttModelSelect');
-  var modelInput = el('set-sttModelInput');
-  var modelRow = el('set-sttModelRow');
-  var langRow = el('set-sttLangRow');
-  var langInput = el('set-sttLangInput');
-  var sttMsg = el('set-sttSettingsMsg');
+  var provSel       = el('set-sttProviderSelect');
+  var modelSelect   = el('set-sttModelSelect');
+  var modelInput    = el('set-sttModelInput');
+  var modelRow      = el('set-sttModelRow');
+  var langRow       = el('set-sttLangRow');
+  var langInput     = el('set-sttLangInput');
+  var sttMsg        = el('set-sttSettingsMsg');
   var sttEnabledToggle = el('set-sttEnabledToggle');
   var sttConfigWrap = el('set-sttConfigWrap');
-  // STT was removed from AI Defaults — bail if the UI isn't present.
+  var groqKeyRow    = el('set-sttGroqKeyRow');
+  var groqKeyInput  = el('set-sttGroqApiKey');
+  var saveBtn       = el('set-sttSaveBtn');
+  // Bail if the STT card is not in the DOM
   if (!provSel) return;
 
   function isEndpoint() { return provSel.value.startsWith('endpoint:'); }
-  function getModel() { return isEndpoint() ? modelInput.value : modelSelect.value; }
+  function isGroq()     { return provSel.value === 'groq'; }
+  function isLocal()    { return provSel.value === 'local'; }
+
+  function getModel() {
+    if (isGroq() || isEndpoint()) return modelInput.value.trim();
+    return modelSelect.value;
+  }
 
   function updateVisibility() {
     var prov = provSel.value;
-    var showModel = prov === 'local' || prov.startsWith('endpoint:');
-    var showLang = prov !== 'disabled';
+    // Model row: shown for local / groq / endpoint
+    var showModel = prov === 'local' || prov === 'groq' || prov.startsWith('endpoint:');
     modelRow.style.display = showModel ? 'flex' : 'none';
-    langRow.style.display = showLang ? 'flex' : 'none';
-    if (isEndpoint()) {
-      modelSelect.style.display = 'none'; modelInput.style.display = '';
-    } else {
+
+    // Language row: hidden only when disabled
+    langRow.style.display = prov === 'disabled' ? 'none' : 'flex';
+
+    // Groq API key row
+    if (groqKeyRow) groqKeyRow.style.display = isGroq() ? 'flex' : 'none';
+
+    // Model select vs free-text input
+    if (isLocal()) {
       modelSelect.style.display = ''; modelInput.style.display = 'none';
+    } else {
+      modelSelect.style.display = 'none'; modelInput.style.display = '';
+      if (isGroq() && !modelInput.value) modelInput.value = 'whisper-large-v3-turbo';
     }
   }
 
@@ -1004,19 +1021,16 @@ async function initSttSettings() {
     if (sttConfigWrap) sttConfigWrap.style.pointerEvents = off ? 'none' : '';
   }
 
-  // Effective provider: if toggle is off, treat as disabled regardless of provider select
-  function effectiveProvider() {
-    if (sttEnabledToggle && !sttEnabledToggle.checked) return 'disabled';
-    return provSel.value;
-  }
-
-  // Add API endpoints that might support STT
+  // Add API endpoints that support STT (OpenAI-compatible)
   try {
     var epRes = await fetch('/api/model-endpoints', { credentials: 'same-origin' });
     var endpoints = await epRes.json();
     endpoints.forEach(function(ep) {
       if (!ep.is_enabled) return;
-      var opt = document.createElement('option'); opt.value = 'endpoint:' + ep.id; opt.textContent = ep.name + ' (API)'; provSel.appendChild(opt);
+      var opt = document.createElement('option');
+      opt.value = 'endpoint:' + ep.id;
+      opt.textContent = ep.name + ' (API)';
+      provSel.appendChild(opt);
     });
   } catch (e) { console.warn('Failed to load endpoints for STT', e); }
 
@@ -1025,8 +1039,12 @@ async function initSttSettings() {
     var settingsRes = await fetch('/api/auth/settings', { credentials: 'same-origin' });
     var settings = await settingsRes.json();
     if (settings.stt_provider) provSel.value = settings.stt_provider;
-    if (settings.stt_model) { modelSelect.value = settings.stt_model; modelInput.value = settings.stt_model; }
+    if (settings.stt_model) {
+      modelSelect.value = settings.stt_model;
+      modelInput.value  = settings.stt_model;
+    }
     if (settings.stt_language) langInput.value = settings.stt_language;
+    if (groqKeyInput && settings.stt_groq_api_key) groqKeyInput.value = settings.stt_groq_api_key;
     if (sttEnabledToggle) sttEnabledToggle.checked = settings.stt_enabled !== false;
   } catch (e) { console.warn('Failed to load STT settings', e); }
 
@@ -1036,22 +1054,37 @@ async function initSttSettings() {
   async function saveSTT() {
     try {
       var enabled = sttEnabledToggle ? sttEnabledToggle.checked : false;
-      await fetch('/api/auth/settings', { method: 'POST', credentials: 'same-origin',
+      var payload = {
+        stt_enabled:      enabled,
+        stt_provider:     provSel.value,
+        stt_model:        getModel() || 'base',
+        stt_language:     langInput.value.trim(),
+        stt_groq_api_key: groqKeyInput ? groqKeyInput.value.trim() : '',
+      };
+      await fetch('/api/auth/settings', {
+        method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stt_enabled: enabled, stt_provider: provSel.value, stt_model: getModel() || 'base', stt_language: langInput.value.trim() }) });
-      sttMsg.textContent = 'Saved'; sttMsg.style.color = 'var(--fg)'; setTimeout(() => { sttMsg.textContent = ''; }, 2000);
-      // Notify voiceRecorder of effective provider and update send button icon
-      if (window.voiceRecorderModule) window.voiceRecorderModule._sttProvider = effectiveProvider();
+        body: JSON.stringify(payload),
+      });
+      sttMsg.textContent = 'Saved ✓';
+      sttMsg.style.color = 'var(--fg)';
+      setTimeout(() => { sttMsg.textContent = ''; }, 2500);
+      // Tell voiceRecorder & dictate button about the new provider
+      if (window.voiceRecorderModule) window.voiceRecorderModule._sttProvider = provSel.value;
       if (window._updateSendBtnIcon) window._updateSendBtnIcon();
-    } catch (e) { sttMsg.textContent = 'Failed to save'; sttMsg.style.color = 'var(--red)'; }
+    } catch (e) {
+      sttMsg.textContent = 'Failed to save';
+      sttMsg.style.color = 'var(--red)';
+    }
   }
 
-  provSel.addEventListener('change', function() { updateVisibility(); saveSTT(); });
-  modelSelect.addEventListener('change', saveSTT);
-  modelInput.addEventListener('change', saveSTT);
-  langInput.addEventListener('change', saveSTT);
-  if (sttEnabledToggle) sttEnabledToggle.addEventListener('change', function() { syncSttDisabled(); saveSTT(); });
+  provSel.addEventListener('change', function() { updateVisibility(); });
+  if (saveBtn) saveBtn.addEventListener('click', saveSTT);
+  if (sttEnabledToggle) sttEnabledToggle.addEventListener('change', function() {
+    syncSttDisabled(); saveSTT();
+  });
 }
+
 
 /* ═══════════════════════════════════════════
    SEARCH TAB

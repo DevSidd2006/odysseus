@@ -2573,6 +2573,44 @@ body.bg-pattern-sparkles {
     .mode-toggle-btn + .mode-toggle-btn {
       border-left: none;
     }
+
+    /* ── ChatGPT-style dictate button ── */
+    .stt-btn-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .stt-dictate-btn {
+      flex-shrink: 0;
+      transition: transform 0.15s ease, opacity 0.15s, background 0.15s, color 0.15s;
+    }
+    .stt-dictate-btn:hover {
+      transform: scale(1.08);
+    }
+    .stt-dictate-btn:active {
+      transform: scale(0.93);
+    }
+
+    /* Listening state — ripple ring + mic pulse */
+    .stt-dictate-btn.listening {
+      opacity: 1 !important;
+      color: var(--accent, var(--red)) !important;
+      background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent) !important;
+      animation: stt-listening-pulse 1.5s ease-in-out infinite;
+    }
+    .stt-dictate-btn.listening .stt-mic-icon {
+      animation: stt-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes stt-pulse {
+      0%, 100% { transform: scale(1);    opacity: 1;    }
+      50%       { transform: scale(1.22); opacity: 0.75; }
+    }
+    @keyframes stt-listening-pulse {
+      0%, 100% { background: color-mix(in srgb, var(--accent, var(--red)) 12%, transparent); }
+      50% { background: color-mix(in srgb, var(--accent, var(--red)) 24%, transparent); }
+    }
+
+
     /* Message count badge in the chat-meta header (next to the title).
        Auto-hides when empty so a brand-new chat doesn't show "0 msgs". */
     .chat-meta-count {
