@@ -241,12 +241,13 @@ class STTService:
 
         if provider == "local":
             return self._transcribe_local(audio_bytes, model or "base", language)
-
         if provider == "groq":
             api_key = s.get("stt_groq_api_key", "").strip()
             if not api_key:
                 raise ValueError("Groq API key is not configured for STT.")
-            groq_model = model.strip() or GROQ_DEFAULT_MODEL
+            groq_model = model.strip()
+            if not groq_model or groq_model in ("tiny", "base", "small", "medium", "large-v3"):
+                groq_model = GROQ_DEFAULT_MODEL
             return self._transcribe_groq(audio_bytes, api_key, groq_model, language)
 
         if provider.startswith("endpoint:"):

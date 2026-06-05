@@ -1011,7 +1011,9 @@ async function initSttSettings() {
     } else {
       modelSelect.style.display = 'none'; modelInput.style.display = '';
       var provText = provSel.options[provSel.selectedIndex] ? provSel.options[provSel.selectedIndex].textContent : '';
-      if ((isGroq() || provText.toLowerCase().includes('groq')) && !modelInput.value) {
+      var isGroqModel = isGroq() || provText.toLowerCase().includes('groq');
+      var isLocalVal = ['tiny', 'base', 'small', 'medium', 'large-v3'].includes(modelInput.value.trim());
+      if (isGroqModel && (!modelInput.value || isLocalVal)) {
         modelInput.value = 'whisper-large-v3-turbo';
       }
     }
