@@ -3687,7 +3687,7 @@ function startOdysseusApp() {
     _refreshProvider();
 
     function _useServer() {
-      return ['groq', 'local'].includes(_activeProvider) ||
+      return _activeProvider === 'local' ||
              _activeProvider.startsWith('endpoint:');
     }
 
@@ -3713,7 +3713,7 @@ function startOdysseusApp() {
     function _browserStart() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
-        uiModule.showError('Live dictation requires Chrome or Edge. Configure Groq in Settings → AI Defaults → Speech-to-Text for any browser.');
+        uiModule.showError('Live dictation requires Chrome or Edge. Configure a local or endpoint provider in Settings → AI Defaults → Speech-to-Text for any browser.');
         return;
       }
 
@@ -3767,7 +3767,7 @@ function startOdysseusApp() {
       }
     }
 
-    // ── Server STT path (Groq / local Whisper / endpoint) ──────────────────
+    // ── Server STT path (local Whisper / endpoint) ──────────────────────────
     let _mediaRecorder = null;
     let _audioChunks   = [];
     let _serverRecording = false;

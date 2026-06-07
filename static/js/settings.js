@@ -977,45 +977,34 @@ async function initSttSettings() {
   var langInput     = el('set-sttLangInput');
   var sttMsg        = el('set-sttSettingsMsg');
   var sttEnabledToggle = el('set-sttEnabledToggle');
-  var sttConfigWrap = el('set-sttConfigWrap');
-  var groqKeyRow    = el('set-sttGroqKeyRow');
-  var groqKeyInput  = el('set-sttGroqApiKey');
   var saveBtn       = el('set-sttSaveBtn');
   // Bail if the STT card is not in the DOM
   if (!provSel) return;
 
   function isEndpoint() { return provSel.value.startsWith('endpoint:'); }
-  function isGroq()     { return provSel.value === 'groq'; }
   function isLocal()    { return provSel.value === 'local'; }
 
   function getModel() {
-    if (isGroq() || isEndpoint()) return modelInput.value.trim();
+    if (isEndpoint()) return modelInput.value.trim();
     return modelSelect.value;
   }
 
   function updateVisibility() {
     var prov = provSel.value;
-    // Model row: shown for local / groq / endpoint
-    var showModel = prov === 'local' || prov === 'groq' || prov.startsWith('endpoint:');
+    // Model row: shown for local / endpoint
+    var showModel = prov === 'local' || prov.startsWith('endpoint:');
     modelRow.style.display = showModel ? 'flex' : 'none';
 
     // Language row: hidden only when disabled
     langRow.style.display = prov === 'disabled' ? 'none' : 'flex';
 
-    // Groq API key row
-    if (groqKeyRow) groqKeyRow.style.display = isGroq() ? 'flex' : 'none';
+
 
     // Model select vs free-text input
     if (isLocal()) {
       modelSelect.style.display = ''; modelInput.style.display = 'none';
     } else {
       modelSelect.style.display = 'none'; modelInput.style.display = '';
-      var provText = provSel.options[provSel.selectedIndex] ? provSel.options[provSel.selectedIndex].textContent : '';
-      var isGroqModel = isGroq() || provText.toLowerCase().includes('groq');
-      var isLocalVal = ['tiny', 'base', 'small', 'medium', 'large-v3'].includes(modelInput.value.trim());
-      if (isGroqModel && (!modelInput.value || isLocalVal)) {
-        modelInput.value = 'whisper-large-v3-turbo';
-      }
     }
   }
 
@@ -1023,7 +1012,8 @@ async function initSttSettings() {
     var off = sttEnabledToggle && !sttEnabledToggle.checked;
     var card = sttEnabledToggle ? sttEnabledToggle.closest('.admin-card') : null;
     if (card) card.style.opacity = off ? '0.45' : '';
-    if (sttConfigWrap) sttConfigWrap.style.pointerEvents = off ? 'none' : '';
+    var configWrap = el('set-sttConfigWrap');
+    if (configWrap) configWrap.style.pointerEvents = off ? 'none' : '';
   }
 
   // Load saved settings
@@ -1036,7 +1026,6 @@ async function initSttSettings() {
       modelInput.value  = settings.stt_model;
     }
     if (settings.stt_language) langInput.value = settings.stt_language;
-    if (groqKeyInput && settings.stt_groq_api_key) groqKeyInput.value = settings.stt_groq_api_key;
     if (sttEnabledToggle) sttEnabledToggle.checked = settings.stt_enabled !== false;
   } catch (e) { console.warn('Failed to load STT settings', e); }
 
@@ -1051,7 +1040,6 @@ async function initSttSettings() {
         stt_provider:     provSel.value,
         stt_model:        getModel() || 'base',
         stt_language:     langInput.value.trim(),
-        stt_groq_api_key: groqKeyInput ? groqKeyInput.value.trim() : '',
       };
       await fetch('/api/auth/settings', {
         method: 'POST', credentials: 'same-origin',

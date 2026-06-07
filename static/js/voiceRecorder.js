@@ -192,7 +192,7 @@ export function startRecording(onFileCreated, showToast, showError) {
             if (onFileCreated) onFileCreated(audioFile);
           }
         } else {
-          // 'local' (faster-whisper) or 'endpoint:<id>' (Groq / OpenAI-compatible)
+          // 'local' (faster-whisper) or 'endpoint:<id>' (OpenAI-compatible)
           // — send to server and paste the result into the chat input.
           if (showToast) showToast('Transcribing...', 5000);
           try {

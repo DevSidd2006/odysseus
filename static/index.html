@@ -1523,7 +1523,7 @@
               <span style="flex:1"></span>
               <label class="admin-switch"><input type="checkbox" id="set-sttEnabledToggle"><span class="admin-slider"></span></label>
             </h2>
-            <div class="admin-toggle-sub" style="margin-bottom:8px">Dictate text directly into the chat input. Use local Whisper (offline, private) or Groq's free Whisper API (fast, cloud).</div>
+            <div class="admin-toggle-sub" style="margin-bottom:8px">Dictate text directly into the chat input. Use local Whisper (offline, private), browser native speech, or any OpenAI-compatible STT endpoint.</div>
             <div id="set-sttConfigWrap" style="display:flex;flex-direction:column;gap:0.5rem;">
               <!-- Provider -->
               <div style="display:flex;align-items:center;gap:0.75rem;">
@@ -1531,15 +1531,8 @@
                 <select id="set-sttProviderSelect" class="settings-select">
                   <option value="disabled">Disabled</option>
                   <option value="browser">Browser Native</option>
-                  <option value="groq">Groq Cloud</option>
                   <option value="local">Local Whisper</option>
                 </select>
-              </div>
-              <!-- Groq API key — shown only for groq -->
-              <div id="set-sttGroqKeyRow" style="display:flex;align-items:center;gap:0.75rem;display:none;">
-                <label class="settings-label">Groq API Key</label>
-                <input id="set-sttGroqApiKey" type="password" class="settings-select" placeholder="gsk_…" style="flex:1;" autocomplete="off">
-                <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="font-size:11px;opacity:0.6;white-space:nowrap;color:var(--fg);text-decoration:underline;">Get free key ↗</a>
               </div>
               <!-- Model -->
               <div id="set-sttModelRow" style="display:flex;align-items:center;gap:0.75rem;">

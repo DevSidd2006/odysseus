@@ -1,10 +1,11 @@
 # routes/stt_routes.py
-"""STT API routes — local Whisper, Groq, or any OpenAI-compatible endpoint."""
+"""STT API routes — local Whisper or any OpenAI-compatible endpoint."""
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 import logging
 
 from src.upload_limits import read_upload_limited
+from src.auth_helpers import require_user
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,9 @@ def setup_stt_routes(stt_service):
     router = APIRouter(prefix="/api/stt", tags=["stt"])
 
     @router.get("/stats")
-    async def get_stt_stats():
+    async def get_stt_stats(request: Request):
         """Return current STT provider config (used by the dictate button)."""
+        require_user(request)
         try:
             return stt_service.get_stats()
         except Exception as e:
@@ -25,8 +27,9 @@ def setup_stt_routes(stt_service):
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/transcribe")
-    async def transcribe_audio(file: UploadFile = File(...)):
+    async def transcribe_audio(request: Request, file: UploadFile = File(...)):
         """Transcribe uploaded audio and return the transcript text."""
+        require_user(request)
         try:
             audio_bytes = await read_upload_limited(file, STT_MAX_AUDIO_BYTES, "Audio file")
             if not audio_bytes:

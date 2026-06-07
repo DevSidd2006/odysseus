@@ -5,7 +5,6 @@ Providers:
   "disabled"        — no STT
   "browser"         — client-side Web Speech API (server not involved)
   "local"           — faster-whisper running locally on CPU/GPU
-  "groq"            — Groq cloud Whisper API (whisper-large-v3-turbo by default)
   "endpoint:<id>"   — any OpenAI-compatible /audio/transcriptions endpoint
 """
 
@@ -17,10 +16,6 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
-
-# Groq's audio transcription endpoint
-GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
-GROQ_DEFAULT_MODEL = "whisper-large-v3-turbo"
 
 
 class STTService:
@@ -38,7 +33,6 @@ class STTService:
             "stt_provider":     saved.get("stt_provider", "disabled"),
             "stt_model":        saved.get("stt_model", "base"),
             "stt_language":     saved.get("stt_language", ""),
-            "stt_groq_api_key": saved.get("stt_groq_api_key", ""),
         }
 
     @property
@@ -51,8 +45,6 @@ class STTService:
             return False
         if p == "local":
             return self._get_whisper(s["stt_model"]) is not None
-        if p == "groq":
-            return bool(s.get("stt_groq_api_key", "").strip())
         if p.startswith("endpoint:"):
             return True   # assume reachable; fail at call time
         return False
@@ -142,43 +134,6 @@ class STTService:
             if tmp_path:
                 Path(tmp_path).unlink(missing_ok=True)
 
-    # ── Groq API ──────────────────────────────────────────────────────────────
-
-    def _transcribe_groq(
-        self,
-        audio_bytes: bytes,
-        api_key: str,
-        model: str,
-        language: str = "",
-    ) -> Optional[str]:
-        language = self._normalize_language(language)
-        model = model.strip() or GROQ_DEFAULT_MODEL
-        headers = {"Authorization": f"Bearer {api_key}"}
-        files = {"file": ("audio.webm", io.BytesIO(audio_bytes), "audio/webm")}
-        data: dict = {"model": model}
-        if language:
-            data["language"] = language
-
-        try:
-            r = httpx.post(
-                GROQ_STT_URL,
-                headers=headers,
-                files=files,
-                data=data,
-                timeout=60,
-            )
-            r.raise_for_status()
-            text = r.json().get("text", "").strip()
-            logger.info(f"Groq STT ({model}): {len(text)} chars")
-            return text or None
-        except httpx.HTTPStatusError as e:
-            body = e.response.text[:200]
-            logger.error(f"Groq STT HTTP {e.response.status_code}: {body}")
-            raise
-        except Exception as e:
-            logger.error(f"Groq STT failed: {e}")
-            raise
-
     # ── Generic OpenAI-compatible endpoint ────────────────────────────────────
 
     def _transcribe_endpoint(
@@ -241,14 +196,6 @@ class STTService:
 
         if provider == "local":
             return self._transcribe_local(audio_bytes, model or "base", language)
-        if provider == "groq":
-            api_key = s.get("stt_groq_api_key", "").strip()
-            if not api_key:
-                raise ValueError("Groq API key is not configured for STT.")
-            groq_model = model.strip()
-            if not groq_model or groq_model in ("tiny", "base", "small", "medium", "large-v3"):
-                groq_model = GROQ_DEFAULT_MODEL
-            return self._transcribe_groq(audio_bytes, api_key, groq_model, language)
 
         if provider.startswith("endpoint:"):
             endpoint_id = provider.split(":", 1)[1]
@@ -274,9 +221,6 @@ class STTService:
         if provider == "local":
             whisper = self._get_whisper(s["stt_model"])
             stats["model_loaded"] = whisper is not None
-        elif provider == "groq":
-            stats["groq_key_set"] = bool(s.get("stt_groq_api_key", "").strip())
-            stats["model"] = s["stt_model"].strip() or GROQ_DEFAULT_MODEL
         elif provider.startswith("endpoint:"):
             stats["endpoint_id"] = provider.split(":", 1)[1]
 
