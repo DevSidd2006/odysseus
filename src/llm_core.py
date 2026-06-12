@@ -402,6 +402,14 @@ def _parse_ollama_response(data: dict) -> str:
     return message.get("content") or data.get("response") or ""
 
 
+def _normalize_google_url(url: str, model: str, stream: bool = False) -> str:
+    from src.endpoint_resolver import normalize_base
+    base = normalize_base(url)
+    if stream:
+        return f"{base}/models/{model}:streamGenerateContent?alt=sse"
+    return f"{base}/models/{model}:generateContent"
+
+
 def _build_google_payload(
     model: str,
     messages: List[Dict],
@@ -411,12 +419,14 @@ def _build_google_payload(
     tools: Optional[List[Dict]] = None,
 ) -> Dict:
     contents = []
+    sys_parts = []
     for msg in messages:
         role = msg.get("role", "user")
+        if role == "system":
+            sys_parts.append(msg.get("content") or "")
+            continue
         if role == "assistant":
             role = "model"
-        if role == "system":
-            role = "user"
         content = msg.get("content", "")
         if isinstance(content, str):
             parts = [{"text": content}]
@@ -428,6 +438,11 @@ def _build_google_payload(
         "model": model,
         "contents": contents,
     }
+
+    if sys_parts:
+        payload["systemInstruction"] = {
+            "parts": [{"text": "\n\n".join(sys_parts)}]
+        }
 
     gen_config: Dict = {}
     if temperature is not None:
@@ -450,6 +465,8 @@ def _build_google_payload(
             payload["tools"] = [{"function_declarations": decls}]
 
     if stream:
+        if "generationConfig" not in payload:
+            payload["generationConfig"] = {}
         payload["generationConfig"]["candidateCount"] = 1
 
     return payload
@@ -591,6 +608,12 @@ def _provider_headers(provider: str, headers: Optional[Dict] = None) -> Dict[str
         from src.copilot import copilot_headers
         for k, v in copilot_headers(None).items():
             h.setdefault(k, v)
+    if provider == "google":
+        auth = h.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            key = auth[7:].strip()
+            h["x-goog-api-key"] = key
+            h.pop("Authorization", None)
     return h
 
 
@@ -1304,7 +1327,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             stream=False, num_ctx=get_context_length(url, model),
         )
     elif provider == "google":
-        target_url = url
+        target_url = _normalize_google_url(url, model, stream=False)
+        h = _provider_headers(provider, h)
         payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=False)
     else:
         target_url = url
@@ -1502,7 +1526,7 @@ async def llm_call_async(
             stream=False, num_ctx=get_context_length(url, model),
         )
     elif provider == "google":
-        target_url = url
+        target_url = _normalize_google_url(url, model, stream=False)
         h = _provider_headers(provider, headers)
         payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=False)
     else:
@@ -1628,7 +1652,7 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
         h = _provider_headers(provider, headers)
         payload = _build_chatgpt_responses_payload(model, messages_copy, temperature, max_tokens, stream=True)
     elif provider == "google":
-        target_url = url
+        target_url = _normalize_google_url(url, model, stream=True)
         h = _provider_headers(provider, headers)
         payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=True, tools=tools)
     else:

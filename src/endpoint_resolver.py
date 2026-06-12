@@ -210,6 +210,10 @@ def build_headers(api_key: Optional[str], base: str) -> Dict[str, str]:
     if provider == "chatgpt-subscription":
         from src.chatgpt_subscription import chatgpt_headers
         return chatgpt_headers(api_key)
+    if provider == "google":
+        if api_key:
+            headers["x-goog-api-key"] = api_key
+        return headers
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if provider == "openrouter":
