@@ -520,6 +520,11 @@ def _detect_provider(url: str) -> str:
     if is_copilot_base(url):
         return "copilot"
     if _host_match(url, "googleapis.com"):
+        try:
+            if url and "/openai" in urlparse(url).path:
+                return "openai"
+        except Exception:
+            pass
         return "google"
     return "openai"
 
