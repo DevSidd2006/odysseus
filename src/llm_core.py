@@ -402,6 +402,73 @@ def _parse_ollama_response(data: dict) -> str:
     return message.get("content") or data.get("response") or ""
 
 
+def _build_google_payload(
+    model: str,
+    messages: List[Dict],
+    temperature: float,
+    max_tokens: int,
+    stream: bool = False,
+    tools: Optional[List[Dict]] = None,
+) -> Dict:
+    contents = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        if role == "assistant":
+            role = "model"
+        if role == "system":
+            role = "user"
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            parts = [{"text": content}]
+        else:
+            parts = [{"text": str(content)}]
+        contents.append({"role": role, "parts": parts})
+
+    payload: Dict = {
+        "model": model,
+        "contents": contents,
+    }
+
+    gen_config: Dict = {}
+    if temperature is not None:
+        gen_config["temperature"] = temperature
+    if max_tokens and max_tokens > 0:
+        gen_config["maxOutputTokens"] = max_tokens
+    if gen_config:
+        payload["generationConfig"] = gen_config
+
+    if tools:
+        decls = []
+        for t in tools:
+            fn = t.get("function") or t
+            decls.append({
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "parameters": fn.get("parameters", {}),
+            })
+        if decls:
+            payload["tools"] = [{"function_declarations": decls}]
+
+    if stream:
+        payload["generationConfig"]["candidateCount"] = 1
+
+    return payload
+
+
+def _parse_google_response(data: dict) -> str:
+    candidates = data.get("candidates", [])
+    if candidates:
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if parts:
+            text = parts[0].get("text", "")
+            if text:
+                return text
+            fc = parts[0].get("functionCall")
+            if fc:
+                return json.dumps({"name": fc.get("name"), "arguments": fc.get("args", {})})
+    return ""
+
+
 def _host_match(url: str, *domains: str) -> bool:
     """Return True if url's hostname equals any of `domains` or is a subdomain of one.
 
@@ -452,6 +519,8 @@ def _detect_provider(url: str) -> str:
     from src.copilot import is_copilot_base
     if is_copilot_base(url):
         return "copilot"
+    if _host_match(url, "googleapis.com"):
+        return "google"
     return "openai"
 
 
@@ -1229,6 +1298,9 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             model, messages_copy, temperature, max_tokens,
             stream=False, num_ctx=get_context_length(url, model),
         )
+    elif provider == "google":
+        target_url = url
+        payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=False)
     else:
         target_url = url
         if provider == "copilot":
@@ -1257,6 +1329,8 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
             response = _parse_anthropic_response(data)
         elif provider == "ollama":
             response = _parse_ollama_response(data)
+        elif provider == "google":
+            response = _parse_google_response(data)
         else:
             msg = data["choices"][0]["message"]
             response = msg.get("content") or msg.get("reasoning_content") or ""
@@ -1422,6 +1496,10 @@ async def llm_call_async(
             model, messages_copy, temperature, max_tokens,
             stream=False, num_ctx=get_context_length(url, model),
         )
+    elif provider == "google":
+        target_url = url
+        h = _provider_headers(provider, headers)
+        payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=False)
     else:
         target_url = url
         h = _provider_headers(provider, headers)
@@ -1474,6 +1552,8 @@ async def llm_call_async(
                     response = _parse_anthropic_response(data)
                 elif provider == "ollama":
                     response = _parse_ollama_response(data)
+                elif provider == "google":
+                    response = _parse_google_response(data)
                 else:
                     msg = data["choices"][0]["message"]
                     response = msg.get("content") or msg.get("reasoning_content") or ""
@@ -1542,6 +1622,10 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
         target_url = _normalize_chatgpt_subscription_url(url)
         h = _provider_headers(provider, headers)
         payload = _build_chatgpt_responses_payload(model, messages_copy, temperature, max_tokens, stream=True)
+    elif provider == "google":
+        target_url = url
+        h = _provider_headers(provider, headers)
+        payload = _build_google_payload(model, messages_copy, temperature, max_tokens, stream=True, tools=tools)
     else:
         target_url = url
         payload = {
@@ -1638,6 +1722,73 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
             yield f'event: error\ndata: {json.dumps({"error": "Network error", "status": 502})}\n\n'
         except Exception as e:
             logger.error(f"ChatGPT Subscription stream error: {e}")
+            yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 502})}\n\n'
+        return
+
+    # ── Google Gemini streaming ──
+    if provider == "google":
+        _google_tool_calls: List[Dict] = []
+        _google_tool_call_idx = 0
+        _google_input_tokens = 0
+        _google_output_tokens = 0
+        try:
+            client = _get_http_client()
+            async with client.stream('POST', target_url, json=payload, headers=h, timeout=stream_timeout) as r:
+                _clear_host_dead(target_url)
+                if r.status_code != 200:
+                    raw = (await r.aread()).decode(errors="replace")
+                    friendly = _format_upstream_error(r.status_code, raw, target_url)
+                    yield f'event: error\ndata: {json.dumps({"status": r.status_code, "text": friendly, "raw": raw[:500]})}\n\n'
+                    return
+                async for line in r.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("data:"):
+                        raw = line[5:].strip()
+                        if not raw:
+                            continue
+                        if raw == "[DONE]":
+                            if _google_tool_calls:
+                                yield f'data: {json.dumps({"type": "tool_calls", "calls": _google_tool_calls})}\n\n'
+                            if _google_input_tokens or _google_output_tokens:
+                                yield f'data: {json.dumps({"type": "usage", "data": {"input_tokens": _google_input_tokens, "output_tokens": _google_output_tokens}})}\n\n'
+                            yield "data: [DONE]\n\n"
+                            return
+                        try:
+                            j = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        candidates = j.get("candidates") or []
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            for part in parts:
+                                text = part.get("text", "")
+                                if text:
+                                    yield f'data: {json.dumps({"delta": text})}\n\n'
+                                fc = part.get("functionCall")
+                                if fc:
+                                    _google_tool_calls.append({
+                                        "id": f"call_{_google_tool_call_idx}",
+                                        "name": fc.get("name", ""),
+                                        "arguments": json.dumps(fc.get("args", {})),
+                                    })
+                                    _google_tool_call_idx += 1
+                        usage = j.get("usageMetadata") or {}
+                        if usage:
+                            _google_input_tokens = usage.get("promptTokenCount", _google_input_tokens)
+                            _google_output_tokens = usage.get("candidatesTokenCount", _google_output_tokens)
+                yield "data: [DONE]\n\n"
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _cooled = _mark_host_dead(target_url)
+            _tail = f" — host cooled for {DEAD_HOST_COOLDOWN:.0f}s" if _cooled else " — transient, will retry"
+            logger.warning(f"Google Gemini stream connect to {target_url} failed: {e}{_tail}")
+            yield f'event: error\ndata: {json.dumps({"error": f"Cannot reach {_host_key(target_url)}", "status": 503})}\n\n'
+        except httpx.ReadTimeout:
+            yield f'event: error\ndata: {json.dumps({"error": "Read timeout", "status": 504})}\n\n'
+        except httpx.NetworkError:
+            yield f'event: error\ndata: {json.dumps({"error": "Network error", "status": 502})}\n\n'
+        except Exception as e:
+            logger.error(f"Google Gemini stream error: {e}")
             yield f'event: error\ndata: {json.dumps({"error": str(e), "status": 502})}\n\n'
         return
 
